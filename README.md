@@ -15,6 +15,11 @@ A QC and filtering step taken by long-read isoform analysis softwares (SQUANTI, 
 
 `polyscan` will output a 6 column BED file which can then be used in downstream filtering and QC of long-read RNA alignments.
 
+Paper's that dicussion this issue are linked below:
+- [Nam-2002-PNAS](https://www.pnas.org/doi/10.1073/pnas.092140899)
+- [Svoboda-2022-NAR-Genomics-and-Bioinformatics](https://www.pnas.org/doi/10.1073/pnas.092140899](https://academic.oup.com/nargab/article/4/2/lqac035/6592171))
+
+
 
 ## Installation
 
