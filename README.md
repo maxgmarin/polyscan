@@ -11,7 +11,7 @@ I wrote this simple tool to identify polyA tracts within gene sequences that cou
 A QC and filtering step taken by long-read isoform analysis softwares (SQUANTI, TALON) are to flag reads that start or end at polyA tracts as likely internal priming artifacts.
 
 
-`polyscan` can quickly quickly process any input genome sequence and report windows of the genome which are mostly made up of a single nucleotide. This has applications for findign polyA tracts, but I set up the program to be generalizable for any nucletoide. 
+`polyscan` can quickly quickly process any input genome sequence and report windows of the genome which are mostly made up of a single nucleotide. This has applications for finding polyA tracts, but I set up the program to be generalizable for any nucletoide. 
 
 `polyscan` will output a 6 column BED file which can then be used in downstream filtering and QC of long-read RNA alignments.
 
