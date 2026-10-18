@@ -46,7 +46,7 @@ impl Sink {
     /// Open `path`, as BGZF if it ends in `.gz`/`.bgz`, else as plain text.
     /// With `index`, also write a tabix index to `<path>.tbi` (BGZF only).
     pub fn create(path: &Path, index: bool) -> Result<Self, Box<dyn Error>> {
-        let file = File::create(path)?;
+        let file = File::create(path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
         if !is_bgzf_path(path) {
             return Ok(Sink::plain(Box::new(file)));
         }

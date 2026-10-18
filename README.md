@@ -43,7 +43,8 @@ To merge passing windows into tracts and write a compressed, indexed BED:
 
 ```bash
 polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A --mode tracts \
-  -o GRCh38.polyA_tracts_W10_P80.bed.gz --index --stats
+  -o GRCh38.polyA_tracts_W10_P80.bed.gz --index --stats \
+  --bigbed GRCh38.polyA_tracts_W10_P80.bb
 ```
 
 - **--fasta** / **-f**: Path to the input FASTA, plain or compressed (gzip, bgzip, bzip2, xz or zstd, detected automatically).
@@ -54,6 +55,8 @@ polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A --mode tracts \
 - **--output** / **-o**: Output file (default stdout). A path ending in `.gz` or `.bgz` is written as BGZF, so `tabix`, `bedtools`, IGV and pysam can read it directly.
 - **--index**: Also write a tabix index (`<output>.tbi`). Needs a `.gz`/`.bgz` output.
 - **--extended**: Tracts mode only. Appends two columns, described below.
+- **--bigbed** *PATH*: Tracts mode only. Also writes the tracts as [bigBed](https://genome.ucsc.edu/goldenPath/help/bigBed.html), UCSC's indexed binary BED, readable by the UCSC browser, IGV, pyBigWig and bigtools. Columns match the BED output, including `--extended`. If no tracts are found, no bigBed is written and a warning is printed. The tracts are held in memory until the scan ends (about 150 MB for GRCh38 at W10/P80).
+- **--threads**: Threads used to compress the bigBed (default 4).
 - **--stats**: Print counts to stderr: contigs, contigs shorter than the window, passing windows, tracts and total tract length per strand, and run time.
 
 Lowercase (soft-masked) bases are counted. Other IUPAC codes (R, Y, …) count towards no base. Contigs shorter than the window are skipped.

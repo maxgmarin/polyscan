@@ -1,3 +1,4 @@
+mod bigbed;
 mod output;
 mod scan;
 mod tracts;
@@ -11,6 +12,7 @@ use std::time::Instant;
 use bio::io::fasta::{self, FastaRead};
 use clap::{Parser, ValueEnum};
 
+use bigbed::Retained;
 use output::{is_bgzf_path, Extended, Sink};
 use scan::{complement, nuc_to_index, scan_contig, score, threshold_count};
 use tracts::{sort_tracts, Merger, Tract};
@@ -70,6 +72,15 @@ struct Args {
     #[arg(long)]
     extended: bool,
 
+    /// Tracts mode only: also write the tracts as bigBed to this path. Its
+    /// columns match the BED output, including --extended.
+    #[arg(long, value_name = "PATH")]
+    bigbed: Option<PathBuf>,
+
+    /// Threads for compressing the bigBed.
+    #[arg(long, default_value_t = 4)]
+    threads: usize,
+
     /// Print counts per strand to stderr.
     #[arg(long)]
     stats: bool,
@@ -89,7 +100,14 @@ fn fail(msg: &str) -> ! {
     std::process::exit(1);
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
     let started = Instant::now();
     let args = Args::parse();
 
@@ -114,6 +132,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     if args.extended && args.mode != Mode::Tracts {
         fail("--extended requires --mode tracts.");
     }
+    if args.bigbed.is_some() && args.mode != Mode::Tracts {
+        fail("--bigbed requires --mode tracts.");
+    }
+    if args.threads == 0 {
+        fail("--threads must be at least 1.");
+    }
 
     let threshold = threshold_count(p, w);
     let user_idx = nuc_to_index(base).unwrap();
@@ -129,6 +153,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let mut stats = Stats::default();
     let mut tracts: Vec<Tract> = Vec::new();
+    let mut retained = args.bigbed.as_ref().map(|_| Retained::new(args.extended));
 
     // One record reused for every contig, so its buffer is allocated once at the
     // size of the largest contig. `records()` allocates a fresh one per contig,
@@ -142,6 +167,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let chrom = record.id();
         let seq = record.seq();
         stats.contigs += 1;
+        if let Some(r) = &mut retained {
+            r.add_contig(chrom, seq.len())?;
+        }
         if seq.len() < w {
             stats.short_contigs += 1;
             continue;
@@ -186,18 +214,32 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let s = (t.strand == '-') as usize;
                     stats.tracts[s] += 1;
                     stats.tract_bp[s] += (t.end - t.start) as u64;
-                    let extended = args.extended.then(|| {
+                    let tract_score = score(t.max_count, w);
+                    let target_count = if args.extended {
                         let idx = if t.strand == '+' { user_idx } else { comp_idx };
-                        let n = seq[t.start..t.end].iter().filter(|&&b| nuc_to_index(b) == Some(idx)).count();
-                        Extended { n_windows: t.n_windows, span_frac: n as f64 / (t.end - t.start) as f64 }
+                        seq[t.start..t.end].iter().filter(|&&b| nuc_to_index(b) == Some(idx)).count()
+                    } else {
+                        0
+                    };
+                    let extended = args.extended.then(|| Extended {
+                        n_windows: t.n_windows,
+                        span_frac: target_count as f64 / (t.end - t.start) as f64,
                     });
-                    sink.write_record(chrom, t.start, t.end, name, score(t.max_count, w), t.strand, extended.as_ref())?;
+                    sink.write_record(chrom, t.start, t.end, name, tract_score, t.strand, extended.as_ref())?;
+                    if let Some(r) = &mut retained {
+                        r.push(t, tract_score, target_count);
+                    }
                 }
             }
         }
     }
 
     sink.finish()?;
+    if let (Some(r), Some(path)) = (retained, &args.bigbed) {
+        if !r.write(path, name, args.threads)? {
+            eprintln!("Warning: no tracts found, so no bigBed was written to {}", path.display());
+        }
+    }
 
     if args.stats {
         eprintln!("polyscan {} stats", env!("CARGO_PKG_VERSION"));
@@ -236,9 +278,10 @@ fn parse_percentage(s: &str) -> Result<u32, String> {
 /// bytes to sniff the format, so a file too short for that (including an
 /// empty file) is read as plain text.
 fn open_input(path: &str) -> Result<Box<dyn Read>, Box<dyn Error>> {
-    match niffler::get_reader(Box::new(File::open(path)?)) {
+    let open = || File::open(path).map_err(|e| format!("cannot open {path}: {e}"));
+    match niffler::get_reader(Box::new(open()?)) {
         Ok((reader, _format)) => Ok(reader),
-        Err(niffler::Error::FileTooShort) => Ok(Box::new(File::open(path)?)),
+        Err(niffler::Error::FileTooShort) => Ok(Box::new(open()?)),
         Err(e) => Err(e.into()),
     }
 }

@@ -7,10 +7,23 @@ edition = "2021"
 clap    = { version = "=4.6.7", features = ["derive"] }
 bio     = { version = "=2.3.0" }
 niffler = { version = "=2.7.0" }
-noodles-bgzf = "=0.52.0"
+
+# BGZF output and the in-process tabix index. The four noodles crates are released
+# together and must move together.
+noodles-bgzf  = "=0.52.0"
 noodles-tabix = "=0.68.0"
-noodles-csi = "=0.62.0"
-noodles-core = "=0.21.0"
+noodles-csi   = "=0.62.0"
+noodles-core  = "=0.21.0"
+
+# bigBed output (--bigbed). default-features = false drops the CLI and the remote
+# (HTTP) reader. bigtools compiles libdeflate (C), so the static musl build needs the
+# CC_*/AR_* variables in RELEASING.md. tokio supplies the runtime bigtools writes on.
+bigtools = { version = "=0.5.8", default-features = false, features = ["write"] }
+tokio    = { version = "=1.53.2", default-features = false, features = ["rt", "rt-multi-thread"] }
+
+[dev-dependencies]
+# Tests read the bigBed back.
+bigtools = { version = "=0.5.8", default-features = false, features = ["read"] }
 
 [profile.release]
 opt-level = 3

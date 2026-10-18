@@ -182,6 +182,89 @@ fn extended_columns_match_recount() {
     }
 }
 
+/// The bigBed read back through bigtools matches the BED output record for
+/// record, with and without --extended, and region queries return the
+/// overlapping subset.
+#[test]
+fn bigbed_matches_bed_output() {
+    use bigtools::BigBedRead;
+
+    let dir = scratch("bigbed");
+    for c in cases().iter().filter(|c| c.fixture.starts_with("random_1mb") || c.fixture == "multi_contig.fa") {
+        for extended in [false, true] {
+            let bb = dir.join(format!("out.{}.{extended}.bb", c.window));
+            let mut args = vec!["--mode", "tracts", "--bigbed", bb.to_str().unwrap()];
+            if extended {
+                args.push("--extended");
+            }
+            let bed = String::from_utf8(ok_stdout(c.run(&args))).unwrap();
+            let lines: Vec<&str> = bed.lines().collect();
+            assert!(!lines.is_empty());
+
+            let mut reader = BigBedRead::open_file(&bb).unwrap();
+            assert_eq!(reader.item_count().unwrap(), lines.len() as u64, "{}", bb.display());
+            let autosql = reader.autosql().unwrap().unwrap();
+            assert!(autosql.contains("polyTract"));
+            assert_eq!(autosql.contains("spanFrac"), extended);
+
+            // Every record, contig by contig in FASTA order.
+            let mut chroms: Vec<&str> = Vec::new();
+            for l in &lines {
+                let chrom = l.split('\t').next().unwrap();
+                if chroms.last() != Some(&chrom) {
+                    chroms.push(chrom);
+                }
+            }
+            let mut got = Vec::new();
+            for chrom in &chroms {
+                let len = reader.chroms().iter().find(|ci| ci.name == *chrom).unwrap().length;
+                for e in reader.get_interval(chrom, 0, len).unwrap() {
+                    let e = e.unwrap();
+                    got.push(format!("{chrom}\t{}\t{}\t{}", e.start, e.end, e.rest));
+                }
+            }
+            assert_eq!(got, lines, "{}: all records", bb.display());
+
+            // A region query returns the records overlapping [from, to).
+            let chrom = chroms[0];
+            let (from, to) = (5_000u32, 60_000u32);
+            let got: Vec<String> = reader
+                .get_interval(chrom, from, to)
+                .unwrap()
+                .map(|e| e.unwrap())
+                .map(|e| format!("{chrom}\t{}\t{}\t{}", e.start, e.end, e.rest))
+                .collect();
+            let want: Vec<&str> = lines
+                .iter()
+                .copied()
+                .filter(|l| {
+                    let f: Vec<&str> = l.split('\t').collect();
+                    let (s, e): (u32, u32) = (f[1].parse().unwrap(), f[2].parse().unwrap());
+                    f[0] == chrom && s < to && e > from
+                })
+                .collect();
+            assert_eq!(got, want, "{}: region {chrom}:{from}-{to}", bb.display());
+        }
+    }
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn bigbed_skipped_when_no_tracts() {
+    let dir = scratch("bigbed-empty");
+    let bb = dir.join("empty.bb");
+    let out = Command::new(BIN)
+        .arg("-f")
+        .arg(data("short_contig.fa"))
+        .args(["--mode", "tracts", "--bigbed", bb.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no bigBed was written"));
+    assert!(!bb.exists());
+    fs::remove_dir_all(&dir).unwrap();
+}
+
 #[test]
 fn invalid_flag_combinations_fail() {
     let fa = data("edges.fa");
@@ -196,6 +279,8 @@ fn invalid_flag_combinations_fail() {
         vec!["-f", fa, "-p", "49"],
         vec!["-f", fa, "-w", "0"],
         vec!["-f", fa, "-n", "R"],
+        vec!["-f", fa, "--bigbed", "x.bb"],
+        vec!["-f", fa, "--mode", "tracts", "--bigbed", "x.bb", "--threads", "0"],
     ] {
         let out = Command::new(BIN).args(&args).output().unwrap();
         assert!(!out.status.success(), "expected failure: {args:?}");
