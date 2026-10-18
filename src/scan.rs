@@ -24,14 +24,16 @@ pub fn complement(base: u8) -> u8 {
     }
 }
 
-/// Minimum count of a base in a window of `w` for the window to pass at `p` percent.
-pub fn threshold_count(p: f64, w: usize) -> usize {
-    ((p / 100.0) * (w as f64)).ceil() as usize
+/// Minimum count of a base in a window of `w` for the window to pass at `p`
+/// percent: `ceil(p * w / 100)`, in exact integer arithmetic.
+pub fn threshold_count(p: u32, w: usize) -> usize {
+    (p as usize * w).div_ceil(100)
 }
 
-/// Window percentage reported in the score column, rounded up.
+/// Window percentage reported in the score column: `ceil(100 * count / w)`,
+/// in exact integer arithmetic.
 pub fn score(count: usize, w: usize) -> u64 {
-    ((count as f64 / w as f64) * 100.0).ceil() as u64
+    (100 * count).div_ceil(w) as u64
 }
 
 /// Counts for one window `[start, start + w)`.
@@ -122,6 +124,37 @@ mod tests {
             assert_eq!(t, naive(&seq, w, 3), "T counts, w={w}");
             assert!(hits.iter().enumerate().all(|(i, h)| h.start == i));
         }
+    }
+
+    // Checked against the definitions directly (smallest integer satisfying the
+    // inequality) rather than a second ceil formula. Floating point got six
+    // thresholds and 16 scores wrong over this grid in v0.1.0.
+    #[test]
+    fn threshold_is_exact_over_grid() {
+        for p in 50..=100u32 {
+            for w in 1..=100usize {
+                let t = threshold_count(p, w);
+                assert!(100 * t >= p as usize * w, "p={p} w={w} t={t} too small");
+                assert!(t == 0 || 100 * (t - 1) < p as usize * w, "p={p} w={w} t={t} too big");
+            }
+        }
+        assert_eq!(threshold_count(56, 25), 14);
+        assert_eq!(threshold_count(55, 100), 55);
+        assert_eq!(threshold_count(68, 75), 51);
+        assert_eq!(threshold_count(80, 10), 8);
+    }
+
+    #[test]
+    fn score_is_exact_over_grid() {
+        for w in 1..=100usize {
+            for count in 0..=w {
+                let s = score(count, w) as usize;
+                assert!(s * w >= 100 * count, "count={count} w={w} s={s} too small");
+                assert!(s == 0 || (s - 1) * w < 100 * count, "count={count} w={w} s={s} too big");
+            }
+        }
+        assert_eq!(score(11, 20), 55);
+        assert_eq!(score(7, 9), 78);
     }
 
     #[test]

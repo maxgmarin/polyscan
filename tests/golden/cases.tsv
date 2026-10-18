@@ -1,7 +1,7 @@
 # fixture	window	percentage	nucleotide
 # Golden file: tests/golden/<fixture minus .gz>.w<W>.p<P>.<N>.windows.bed
 # Read by tests/cli.rs and tests/golden/regen.sh.
-# empty.fa is not listed: v0.1.0 exits with niffler FileTooShort (fixed in Phase 1).
+empty.fa	10	80	A
 short_contig.fa	10	80	A
 edges.fa	10	80	A
 bookended.fa	10	80	A

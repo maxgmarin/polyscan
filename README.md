@@ -41,8 +41,10 @@ polyscan \
 
 - **--fasta**: Path to the input FASTA.  
 - **--window-size** / **-w**: Length of the sliding window (default 10).  
-- **--percentage** / **-p**: Minimum % threshold (0–100, default 80).  
-- **--nucleotide** / **-n**: Single base to detect (A, C, G, T, N). Its complement is automatically checked for the minus strand.
+- **--percentage** / **-p**: Minimum percentage, a whole number from 50 to 100 (default 80). A window passes when the base count is at least `ceil(p × w / 100)`.  
+- **--nucleotide** / **-n**: Single base to detect (A, C, G, T, N). Its complement is automatically checked for the minus strand. N is its own complement, so N windows are reported on `+` only.
+
+Lowercase (soft-masked) bases are counted. Other IUPAC codes (R, Y, …) count towards no base. Contigs shorter than the window are skipped.
 
 ## Output
 
@@ -51,7 +53,7 @@ The following **6-column BED** lines will be written to stdout:
 2. **start** (0-based inclusive)  
 3. **end** (0-based exclusive)  
 4. **name** (the nucleotide being searched for)  
-5. **score** (percentage of target nucleotide within window)  
+5. **score** (percentage of target nucleotide within window, rounded up)  
 6. **strand** (`+` or `-`)
 
 Example line A:

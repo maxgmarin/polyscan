@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.27", features = ["derive"] }
-bio = "2.0.3"
-niffler = "2.7.0"
+clap    = { version = "=4.6.7", features = ["derive"] }
+bio     = { version = "=2.3.0" }
+niffler = { version = "=2.7.0" }
 
 [profile.release]
 opt-level = 3
