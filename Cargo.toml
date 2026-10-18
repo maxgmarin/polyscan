@@ -8,7 +8,7 @@ clap    = { version = "=4.6.7", features = ["derive"] }
 bio     = { version = "=2.3.0" }
 niffler = { version = "=2.7.0" }
 
-# BGZF output and the in-process tabix index. The four noodles crates are released
+# Multithreaded BGZF input and output, and the in-process tabix index. The four noodles crates are released
 # together and must move together.
 noodles-bgzf  = "=0.52.0"
 noodles-tabix = "=0.68.0"
@@ -17,9 +17,13 @@ noodles-core  = "=0.21.0"
 
 # bigBed output (--bigbed). default-features = false drops the CLI and the remote
 # (HTTP) reader. bigtools compiles libdeflate (C), so the static musl build needs the
-# CC_*/AR_* variables in RELEASING.md. tokio supplies the runtime bigtools writes on.
+# CC_*/AR_* variables shown in the README. tokio supplies the runtime bigtools writes on.
 bigtools = { version = "=0.5.8", default-features = false, features = ["write"] }
 tokio    = { version = "=1.53.2", default-features = false, features = ["rt", "rt-multi-thread"] }
+
+# Not used directly: selects flate2's zlib-rs backend (already pulled in by noodles)
+# for niffler's gzip decoding, which is about 20% faster than the default miniz_oxide.
+flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-rs"] }
 
 [dev-dependencies]
 # Tests read the bigBed back.

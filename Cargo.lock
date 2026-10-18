@@ -1061,6 +1061,7 @@ dependencies = [
  "bigtools",
  "bio",
  "clap",
+ "flate2",
  "niffler",
  "noodles-bgzf",
  "noodles-core",

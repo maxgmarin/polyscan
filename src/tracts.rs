@@ -56,7 +56,7 @@ impl Merger {
             Some(t) => {
                 t.end = s + self.w;
                 t.max_count = t.max_count.max(count);
-                t.n_windows += 1;
+                t.n_windows = t.n_windows.saturating_add(1);
             }
             None => {
                 self.open = Some(Tract {

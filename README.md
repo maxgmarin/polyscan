@@ -17,17 +17,27 @@ A QC and filtering step taken by long-read isoform analysis softwares (SQUANTI, 
 
 Paper's that dicussion this issue are linked below:
 - [Nam-2002-PNAS](https://www.pnas.org/doi/10.1073/pnas.092140899)
-- [Svoboda-2022-NAR-Genomics-and-Bioinformatics](https://www.pnas.org/doi/10.1073/pnas.092140899](https://academic.oup.com/nargab/article/4/2/lqac035/6592171))
+- [Svoboda-2022-NAR-Genomics-and-Bioinformatics](https://academic.oup.com/nargab/article/4/2/lqac035/6592171)
 
 
 
 ## Installation
 
+Prebuilt binaries for macOS (Apple Silicon) and Linux x86_64 (static, no runtime dependencies) are attached to each [GitHub release](https://github.com/maxgmarin/polyscan/releases). Each tarball holds the `polyscan` binary and this README.
+
+To build from source, with the [Rust toolchain](https://www.rust-lang.org/tools/install) installed:
+
 ```bash
 cargo install --git https://github.com/maxgmarin/polyscan
 ```
 
-*(Ensure you have the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.)*
+A static Linux binary, for an HPC cluster for example, can be cross-compiled from macOS with the musl toolchain (`brew install FiloSottile/musl-cross/musl-cross` and `rustup target add x86_64-unknown-linux-musl`). The linker is set in `.cargo/config.toml`. The `CC`/`AR` variables are needed because some dependencies compile C code (bzip2, xz, zstd and libdeflate):
+
+```bash
+CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc \
+AR_x86_64_unknown_linux_musl=x86_64-linux-musl-ar \
+cargo build --release --target x86_64-unknown-linux-musl
+```
 
 ## Usage
 
@@ -47,23 +57,25 @@ polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A --mode tracts \
   --bigbed GRCh38.polyA_tracts_W10_P80.bb
 ```
 
-- **--fasta** / **-f**: Path to the input FASTA, plain or compressed (gzip, bgzip, bzip2, xz or zstd, detected automatically).
+- **--fasta** / **-f**: Path to the input FASTA, plain or compressed (gzip, bgzip, bzip2, xz or zstd, detected automatically). Use `-` to read from stdin. bgzip (BGZF) input is decompressed on several threads, so it is the fastest compressed form.
 - **--window-size** / **-w**: Length of the sliding window (default 10).
 - **--percentage** / **-p**: Minimum percentage, a whole number from 50 to 100 (default 80). A window passes when the base count is at least `ceil(p × w / 100)`. At exactly 50 with an even window size, a window can pass on both strands.
 - **--nucleotide** / **-n**: Single base to detect (A, C, G, T, N). Its complement is automatically checked for the minus strand. N is its own complement, so N windows are reported on `+` only.
 - **--mode** / **-m**: `windows` (default) writes one line per passing window. `tracts` merges overlapping and book-ended passing windows on the same strand into one line per tract, as `bedtools merge -s` would.
 - **--output** / **-o**: Output file (default stdout). A path ending in `.gz` or `.bgz` is written as BGZF, so `tabix`, `bedtools`, IGV and pysam can read it directly.
-- **--index**: Also write a tabix index (`<output>.tbi`). Needs a `.gz`/`.bgz` output.
+- **--index**: Also write a tabix index (`<output>.tbi`). Needs a `.gz`/`.bgz` output. Tabix cannot address positions past 2^29 bp (536,870,912), so a longer contig stops the run with an error. For such genomes, run without `--index` and index the output with `tabix -C -p bed`, which writes a CSI index.
 - **--extended**: Tracts mode only. Appends two columns, described below.
 - **--bigbed** *PATH*: Tracts mode only. Also writes the tracts as [bigBed](https://genome.ucsc.edu/goldenPath/help/bigBed.html), UCSC's indexed binary BED, readable by the UCSC browser, IGV, pyBigWig and bigtools. Columns match the BED output, including `--extended`. If no tracts are found, no bigBed is written and a warning is printed. The tracts are held in memory until the scan ends (about 150 MB for GRCh38 at W10/P80).
-- **--threads**: Threads used to compress the bigBed (default 4).
+- **--threads**: Threads for decompressing BGZF input, compressing BGZF output written without `--index`, and compressing the bigBed (default 4). Indexed BGZF output is written on one thread.
 - **--stats**: Print counts to stderr: contigs, contigs shorter than the window, passing windows, tracts and total tract length per strand, and run time.
 
-Lowercase (soft-masked) bases are counted. Other IUPAC codes (R, Y, …) count towards no base. Contigs shorter than the window are skipped.
+Lowercase (soft-masked) bases are counted. Other IUPAC codes (R, Y, …) count towards no base. Contigs shorter than the window are skipped. Contig names must be unique and non-empty. A duplicate or empty name stops the run with an error.
+
+Output files are written under a `.tmp` name and renamed when the run finishes, so a failed run leaves no partial output behind. A bigBed is limited to contigs of up to 2^32 bp.
 
 ## Output
 
-Both modes write **6-column BED**, sorted by contig (in FASTA order), then start, end and strand (`+` first):
+Both modes write **6-column BED** (8 columns with `--extended`), sorted by contig (in FASTA order), then start, end and strand (`+` first):
 1. **chrom** (contig ID)
 2. **start** (0-based inclusive)
 3. **end** (0-based exclusive)

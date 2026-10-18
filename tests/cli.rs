@@ -112,10 +112,17 @@ fn bgzf_output_and_tabix_index() {
             let gz = dir.join(format!("out.{mode}.bed.gz"));
             ok_stdout(c.run(&["--mode", mode, "-o", gz.to_str().unwrap(), "--index"]));
 
-            // BGZF decompresses to exactly the plain-text output.
+            // BGZF decompresses to exactly the plain-text output, both indexed
+            // (single-threaded writer) and not (multithreaded writer).
             let mut text = Vec::new();
             noodles_bgzf::io::Reader::new(fs::File::open(&gz).unwrap()).read_to_end(&mut text).unwrap();
             assert_eq!(text, expected, "{}: BGZF content", gz.display());
+            let mt = dir.join(format!("mt.{mode}.bed.bgz"));
+            ok_stdout(c.run(&["--mode", mode, "-o", mt.to_str().unwrap(), "--threads", "4"]));
+            let mut text = Vec::new();
+            noodles_bgzf::io::Reader::new(fs::File::open(&mt).unwrap()).read_to_end(&mut text).unwrap();
+            assert_eq!(text, expected, "{}: multithreaded BGZF content", mt.display());
+            assert!(!dir.join(format!("mt.{mode}.bed.bgz.tbi")).exists());
 
             // Region queries through the index return exactly the overlapping records.
             let lines: Vec<&str> = std::str::from_utf8(&expected).unwrap().lines().collect();
@@ -271,19 +278,149 @@ fn invalid_flag_combinations_fail() {
     let fa = fa.to_str().unwrap();
     let dir = scratch("flags");
     let plain = dir.join("x.bed");
+    let bb = dir.join("x.bb");
+    let (plain, bb) = (plain.to_str().unwrap(), bb.to_str().unwrap());
     for args in [
         vec!["-f", fa, "--index"],
-        vec!["-f", fa, "--index", "-o", plain.to_str().unwrap()],
+        vec!["-f", fa, "--index", "-o", plain],
         vec!["-f", fa, "--extended"],
         vec!["-f", fa, "-p", "80.5"],
         vec!["-f", fa, "-p", "49"],
+        vec!["-f", fa, "-p", "8e1"],
         vec!["-f", fa, "-w", "0"],
         vec!["-f", fa, "-n", "R"],
-        vec!["-f", fa, "--bigbed", "x.bb"],
-        vec!["-f", fa, "--mode", "tracts", "--bigbed", "x.bb", "--threads", "0"],
+        vec!["-f", fa, "-n", "AT"],
+        vec!["-f", fa, "--bigbed", bb],
+        vec!["-f", fa, "--mode", "tracts", "--bigbed", bb, "--threads", "0"],
+        vec!["-f", fa, "--mode", "tracts", "--bigbed", bb, "-o", bb],
     ] {
         let out = Command::new(BIN).args(&args).output().unwrap();
         assert!(!out.status.success(), "expected failure: {args:?}");
     }
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 0, "a rejected command line wrote files");
     fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Write `src` as BGZF (as bgzip would), optionally without the EOF block.
+fn write_bgzf(src: &Path, dst: &Path, with_eof: bool) {
+    let mut w = noodles_bgzf::io::Writer::new(fs::File::create(dst).unwrap());
+    std::io::Write::write_all(&mut w, &fs::read(src).unwrap()).unwrap();
+    w.finish().unwrap();
+    if !with_eof {
+        let bytes = fs::read(dst).unwrap();
+        fs::write(dst, &bytes[..bytes.len() - 28]).unwrap();
+    }
+}
+
+fn plain_text_of(name: &str) -> Vec<u8> {
+    let (mut r, _) = niffler::get_reader(Box::new(fs::File::open(data(name)).unwrap())).unwrap();
+    let mut v = Vec::new();
+    r.read_to_end(&mut v).unwrap();
+    v
+}
+
+/// BGZF input goes through the multithreaded reader; output must match the
+/// goldens for any thread count.
+#[test]
+fn bgzf_input_matches_golden() {
+    let dir = scratch("bgzf-in");
+    for c in cases().iter().filter(|c| c.fixture == "multi_contig.fa" || c.fixture.starts_with("random_1mb")) {
+        let plain = dir.join("in.fa");
+        fs::write(&plain, plain_text_of(&c.fixture)).unwrap();
+        let bgz = dir.join("in.fa.gz");
+        write_bgzf(&plain, &bgz, true);
+        let expected = fs::read(c.golden("tracts")).unwrap();
+        for threads in ["1", "4"] {
+            let out = Command::new(BIN)
+                .arg("-f")
+                .arg(&bgz)
+                .args(["-w", &c.window, "-p", &c.percentage, "-n", &c.nucleotide])
+                .args(["--mode", "tracts", "--threads", threads])
+                .output()
+                .unwrap();
+            assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+            assert_eq!(ok_stdout(out), expected, "{} threads={threads}", c.fixture);
+        }
+    }
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn truncated_bgzf_input_warns() {
+    let dir = scratch("bgzf-trunc");
+    let bgz = dir.join("t.fa.gz");
+    write_bgzf(&data("multi_contig.fa"), &bgz, false);
+    let out = Command::new(BIN).arg("-f").arg(&bgz).output().unwrap();
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no BGZF EOF marker"));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// stdin (`-f -`), plain, gzip and BGZF, gives the same output as the file.
+#[test]
+fn stdin_input() {
+    let dir = scratch("stdin");
+    let plain = data("multi_contig.fa");
+    let bgz = dir.join("in.fa.gz");
+    write_bgzf(&plain, &bgz, true);
+    let expected = fs::read(root().join("tests/golden/multi_contig.fa.w10.p80.A.tracts.bed")).unwrap();
+    for input in [plain, data("multi_contig.fa.gz"), bgz] {
+        let out = Command::new(BIN)
+            .args(["-f", "-", "--mode", "tracts"])
+            .stdin(fs::File::open(&input).unwrap())
+            .output()
+            .unwrap();
+        assert_eq!(ok_stdout(out), expected, "stdin from {}", input.display());
+    }
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Bad contig names stop the run, and no output file (final or temporary) is left.
+#[test]
+fn bad_contig_names_fail_cleanly() {
+    let dir = scratch("names");
+    for (label, fasta) in [
+        ("duplicate", ">c1\nAAAAAAAAAAAA\n>c2\nAAAAAAAAAAAA\n>c1\nAAAAAAAAAAAA\n"),
+        ("empty", ">c1\nAAAAAAAAAAAA\n>\nAAAAAAAAAAAA\n"),
+    ] {
+        let fa = dir.join("in.fa");
+        fs::write(&fa, fasta).unwrap();
+        let out = Command::new(BIN)
+            .arg("-f")
+            .arg(&fa)
+            .args(["--mode", "tracts", "--index", "-o"])
+            .arg(dir.join("out.bed.gz"))
+            .arg("--bigbed")
+            .arg(dir.join("out.bb"))
+            .output()
+            .unwrap();
+        assert!(!out.status.success(), "{label} name accepted");
+        let left: Vec<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, vec!["in.fa"], "{label}: files left behind");
+    }
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn lowercase_nucleotide_and_stats() {
+    let c = &cases().into_iter().find(|c| c.fixture == "multi_contig.fa").unwrap();
+    let upper = c.run(&["--mode", "tracts"]);
+    let lower = Command::new(BIN)
+        .arg("-f")
+        .arg(data(&c.fixture))
+        .args(["-n", "a", "--mode", "tracts", "--stats"])
+        .output()
+        .unwrap();
+    assert!(lower.status.success());
+    assert_eq!(lower.stdout, upper.stdout);
+
+    let stats = String::from_utf8(lower.stderr).unwrap();
+    let golden = fs::read_to_string(c.golden("tracts")).unwrap();
+    let plus = golden.lines().filter(|l| l.ends_with("\t+")).count();
+    let minus = golden.lines().filter(|l| l.ends_with("\t-")).count();
+    for line in ["contigs\t4", "contigs_shorter_than_window\t1", "threshold_count\t8 of 10"] {
+        assert!(stats.lines().any(|l| l == line), "missing {line:?} in:\n{stats}");
+    }
+    assert!(stats.lines().any(|l| l == format!("tracts\t+\t{plus}")), "{stats}");
+    assert!(stats.lines().any(|l| l == format!("tracts\t-\t{minus}")), "{stats}");
 }

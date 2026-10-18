@@ -13,8 +13,11 @@ use std::path::Path;
 use bigtools::beddata::BedParserStreamingIterator;
 use bigtools::{BedEntry, BigBedWrite};
 
+use crate::output::{push_rest, Extended};
 use crate::tracts::Tract;
 
+/// autoSql for the BED6 columns. `--extended` adds `EXTENDED_FIELDS` before the
+/// closing parenthesis.
 const AUTOSQL_BED6: &str = r#"table polyTract
 "Homopolymer tract from polyscan"
 (
@@ -27,19 +30,17 @@ char[1] strand;    "+ = target base run, - = complement run"
 )
 "#;
 
-const AUTOSQL_EXTENDED: &str = r#"table polyTract
-"Homopolymer tract from polyscan"
-(
-string chrom;      "Contig name"
-uint   chromStart; "Start (0-based)"
-uint   chromEnd;   "End (exclusive)"
-string name;       "Target base"
-uint   score;      "Max window percentage in tract"
-char[1] strand;    "+ = target base run, - = complement run"
-uint   nWindows;   "Passing windows merged"
+const EXTENDED_FIELDS: &str = r#"uint   nWindows;   "Passing windows merged"
 float  spanFrac;   "Target fraction over tract span"
-)
 "#;
+
+fn autosql(extended: bool) -> String {
+    if extended {
+        AUTOSQL_BED6.replace(")\n", &format!("{EXTENDED_FIELDS})\n"))
+    } else {
+        AUTOSQL_BED6.to_string()
+    }
+}
 
 #[derive(Clone, Copy)]
 struct Packed {
@@ -77,7 +78,8 @@ impl Retained {
     /// Start a contig. Call for every contig, in FASTA order, including ones
     /// without tracts.
     pub fn add_contig(&mut self, name: &str, len: usize) -> Result<(), Box<dyn Error>> {
-        let len = u32::try_from(len).map_err(|_| format!("contig {name} is too long for bigBed ({len} bp)"))?;
+        let len = u32::try_from(len)
+            .map_err(|_| format!("contig {name} is {len} bp, longer than the 2^32 bp bigBed can address"))?;
         self.chrom_sizes.insert(name.to_string(), len);
         self.contigs.push(Contig { name: name.to_string(), tracts: Vec::new(), ext: Vec::new() });
         Ok(())
@@ -94,7 +96,7 @@ impl Retained {
         }
     }
 
-    /// Write the bigBed. Columns after `end` match the BED output exactly.
+    /// Write the bigBed to `path`. Columns after `end` match the BED output exactly.
     /// Returns false, writing nothing, if there are no tracts: bigtools cannot
     /// write an empty bigBed.
     pub fn write(self, path: &Path, name: char, threads: usize) -> Result<bool, Box<dyn Error>> {
@@ -102,19 +104,17 @@ impl Retained {
         if contigs.iter().all(|c| c.tracts.is_empty()) {
             return Ok(false);
         }
-        let mut writer = BigBedWrite::create_file(path, chrom_sizes)?;
-        writer.autosql = Some(if extended { AUTOSQL_EXTENDED } else { AUTOSQL_BED6 }.to_string());
+        let mut writer = BigBedWrite::create_file(path, chrom_sizes)
+            .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+        writer.autosql = Some(autosql(extended));
 
         let entries = contigs.into_iter().flat_map(move |c| {
             let Contig { name: chrom, tracts, ext } = c;
             tracts.into_iter().enumerate().map(move |(i, t)| {
                 let strand = if t.minus { '-' } else { '+' };
-                let mut rest = format!("{name}\t{}\t{strand}", t.score);
-                if extended {
-                    let e = ext[i];
-                    let span_frac = e.target_count as f64 / (t.end - t.start) as f64;
-                    rest.push_str(&format!("\t{}\t{span_frac:.3}", e.n_windows));
-                }
+                let ext = extended.then(|| Extended { n_windows: ext[i].n_windows, target_count: ext[i].target_count as usize });
+                let mut rest = String::new();
+                push_rest(&mut rest, name, t.score as u64, strand, (t.end - t.start) as usize, ext.as_ref());
                 (chrom.clone(), BedEntry { start: t.start, end: t.end, rest })
             })
         });
