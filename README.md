@@ -23,13 +23,36 @@ Paper's that dicussion this issue are linked below:
 
 ## Installation
 
+### Prebuilt binaries
+
 Prebuilt binaries for macOS (Apple Silicon) and Linux x86_64 (static, no runtime dependencies) are attached to each [GitHub release](https://github.com/maxgmarin/polyscan/releases). Each tarball holds the `polyscan` binary and this README.
 
-To build from source, with the [Rust toolchain](https://www.rust-lang.org/tools/install) installed:
+### From source
+
+Building from source needs the [Rust toolchain](https://www.rust-lang.org/tools/install) and a C compiler. On macOS, the Xcode command line tools provide one (`xcode-select --install`).
+
+Clone the repository and install from inside it:
 
 ```bash
-cargo install --git https://github.com/maxgmarin/polyscan
+git clone https://github.com/maxgmarin/polyscan.git
+cd polyscan
+cargo install --locked --path .
 ```
+
+This builds an optimised binary and copies it to `~/.cargo/bin/polyscan`. That folder is on your `PATH` if you installed Rust with rustup, so you can then run `polyscan` from anywhere. Check it with `polyscan --version`.
+
+- `--path .` installs the crate in the current folder. `cargo install .` on its own is an error; cargo asks for `--path .` instead.
+- `--locked` builds with the exact dependency versions in `Cargo.lock`, the same ones the tests and releases use. Without it, cargo may pick newer versions.
+
+To install a tagged release without cloning:
+
+```bash
+cargo install --locked --git https://github.com/maxgmarin/polyscan --tag v0.2.0
+```
+
+To update later, run `git pull` in the clone and repeat `cargo install --locked --path .`. Cargo replaces the old binary. To remove it, run `cargo uninstall polyscan`.
+
+### Static Linux build
 
 A static Linux binary, for an HPC cluster for example, can be cross-compiled from macOS with the musl toolchain (`brew install FiloSottile/musl-cross/musl-cross` and `rustup target add x86_64-unknown-linux-musl`). The linker is set in `.cargo/config.toml`. The `CC`/`AR` variables are needed because some dependencies compile C code (bzip2, xz, zstd and libdeflate):
 
