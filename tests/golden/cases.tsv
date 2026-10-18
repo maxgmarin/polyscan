@@ -1,17 +1,21 @@
-# fixture	window	percentage	nucleotide
-# Golden file: tests/golden/<fixture minus .gz>.w<W>.p<P>.<N>.windows.bed
+# fixture	window	percentage	nucleotide	modes
+# Goldens: tests/golden/<fixture minus .gz>.w<W>.p<P>.<N>.<mode>.bed
+# windows goldens come from polyscan; tracts goldens from
+# `bedtools merge -s -c 5,6 -o max,distinct` on the windows output.
 # Read by tests/cli.rs and tests/golden/regen.sh.
-empty.fa	10	80	A
-short_contig.fa	10	80	A
-edges.fa	10	80	A
-bookended.fa	10	80	A
-gap1.fa	10	80	A
-overlap_gap.fa	10	80	A
-both_strands.fa	10	80	A
-both_strands.fa	10	50	A
-softmask_n_iupac.fa	10	80	A
-softmask_n_iupac.fa	10	80	N
-multi_contig.fa	10	80	A
-multi_contig.fa.gz	10	80	A
-rounding.fa	25	56	A
-rounding.fa	20	55	A
+empty.fa	10	80	A	windows,tracts
+short_contig.fa	10	80	A	windows,tracts
+edges.fa	10	80	A	windows,tracts
+bookended.fa	10	80	A	windows,tracts
+gap1.fa	10	80	A	windows,tracts
+overlap_gap.fa	10	80	A	windows,tracts
+both_strands.fa	10	80	A	windows,tracts
+both_strands.fa	10	50	A	windows,tracts
+softmask_n_iupac.fa	10	80	A	windows,tracts
+softmask_n_iupac.fa	10	80	N	windows,tracts
+multi_contig.fa	10	80	A	windows,tracts
+multi_contig.fa.gz	10	80	A	windows,tracts
+rounding.fa	25	56	A	windows,tracts
+rounding.fa	20	55	A	windows,tracts
+random_1mb.fa.gz	10	80	A	tracts
+random_1mb.fa.gz	12	75	T	tracts

@@ -7,6 +7,10 @@ edition = "2021"
 clap    = { version = "=4.6.7", features = ["derive"] }
 bio     = { version = "=2.3.0" }
 niffler = { version = "=2.7.0" }
+noodles-bgzf = "=0.52.0"
+noodles-tabix = "=0.68.0"
+noodles-csi = "=0.62.0"
+noodles-core = "=0.21.0"
 
 [profile.release]
 opt-level = 3

@@ -39,22 +39,39 @@ polyscan \
   --nucleotide A
 ```
 
-- **--fasta**: Path to the input FASTA.  
-- **--window-size** / **-w**: Length of the sliding window (default 10).  
-- **--percentage** / **-p**: Minimum percentage, a whole number from 50 to 100 (default 80). A window passes when the base count is at least `ceil(p × w / 100)`.  
+To merge passing windows into tracts and write a compressed, indexed BED:
+
+```bash
+polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A --mode tracts \
+  -o GRCh38.polyA_tracts_W10_P80.bed.gz --index --stats
+```
+
+- **--fasta** / **-f**: Path to the input FASTA, plain or compressed (gzip, bgzip, bzip2, xz or zstd, detected automatically).
+- **--window-size** / **-w**: Length of the sliding window (default 10).
+- **--percentage** / **-p**: Minimum percentage, a whole number from 50 to 100 (default 80). A window passes when the base count is at least `ceil(p × w / 100)`. At exactly 50 with an even window size, a window can pass on both strands.
 - **--nucleotide** / **-n**: Single base to detect (A, C, G, T, N). Its complement is automatically checked for the minus strand. N is its own complement, so N windows are reported on `+` only.
+- **--mode** / **-m**: `windows` (default) writes one line per passing window. `tracts` merges overlapping and book-ended passing windows on the same strand into one line per tract, as `bedtools merge -s` would.
+- **--output** / **-o**: Output file (default stdout). A path ending in `.gz` or `.bgz` is written as BGZF, so `tabix`, `bedtools`, IGV and pysam can read it directly.
+- **--index**: Also write a tabix index (`<output>.tbi`). Needs a `.gz`/`.bgz` output.
+- **--extended**: Tracts mode only. Appends two columns, described below.
+- **--stats**: Print counts to stderr: contigs, contigs shorter than the window, passing windows, tracts and total tract length per strand, and run time.
 
 Lowercase (soft-masked) bases are counted. Other IUPAC codes (R, Y, …) count towards no base. Contigs shorter than the window are skipped.
 
 ## Output
 
-The following **6-column BED** lines will be written to stdout:
-1. **chrom** (contig ID)  
-2. **start** (0-based inclusive)  
-3. **end** (0-based exclusive)  
-4. **name** (the nucleotide being searched for)  
-5. **score** (percentage of target nucleotide within window, rounded up)  
-6. **strand** (`+` or `-`)
+Both modes write **6-column BED**, sorted by contig (in FASTA order), then start, end and strand (`+` first):
+1. **chrom** (contig ID)
+2. **start** (0-based inclusive)
+3. **end** (0-based exclusive)
+4. **name** (the nucleotide being searched for)
+5. **score**: in windows mode, the percentage of the target nucleotide in the window, rounded up. In tracts mode, the highest window percentage in the tract, so a stricter cutoff can be applied later without rescanning.
+6. **strand**: `+` if the window or tract is a run of the target nucleotide, `-` if it is a run of its complement (the target on the reverse strand).
+
+With `--extended`, tracts mode adds:
+
+7. **n_windows**: number of passing windows merged into the tract
+8. **span_frac**: fraction of the target nucleotide (its complement on `-`) over the whole tract, to three decimals
 
 Example line A:
 ```
@@ -68,6 +85,11 @@ contig1    200     210     A   80  +
 ```
 means `[200-210)` has 80% of `A` on the PLUS strand of the contig1 DNA sequence.
 
+Example tract:
+```
+contig1    200     231     A   100 +
+```
+means the passing windows on the plus strand between 200 and 231 merge into one tract, and the best of them is 100% `A`.
 
 ## License & Contributing
 

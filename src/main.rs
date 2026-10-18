@@ -1,15 +1,27 @@
 mod output;
 mod scan;
+mod tracts;
 
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, Read};
+use std::path::PathBuf;
+use std::time::Instant;
 
-use bio::io::fasta;
-use clap::Parser;
+use bio::io::fasta::{self, FastaRead};
+use clap::{Parser, ValueEnum};
 
-use output::write_window;
+use output::{is_bgzf_path, Extended, Sink};
 use scan::{complement, nuc_to_index, scan_contig, score, threshold_count};
+use tracts::{sort_tracts, Merger, Tract};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Mode {
+    /// One line per passing window
+    Windows,
+    /// Passing windows merged into strand-specific tracts (as `bedtools merge -s`)
+    Tracts,
+}
 
 /// Command-line arguments
 #[derive(Parser, Debug)]
@@ -37,9 +49,48 @@ struct Args {
     /// '-' strand. N is its own complement, so N is reported on '+' only.
     #[arg(short = 'n', long = "nucleotide", default_value = "A")]
     nucleotide: String,
+
+    /// Output per-window lines, or merge overlapping and book-ended passing
+    /// windows on the same strand into tracts. Tract score is the highest window
+    /// percentage in the tract.
+    #[arg(short = 'm', long = "mode", value_enum, default_value_t = Mode::Windows)]
+    mode: Mode,
+
+    /// Output file (default: stdout). A path ending in .gz or .bgz is written
+    /// as BGZF; anything else as plain text.
+    #[arg(short = 'o', long = "output")]
+    output: Option<PathBuf>,
+
+    /// Write a tabix index (<output>.tbi). Requires a .gz/.bgz --output.
+    #[arg(long)]
+    index: bool,
+
+    /// Tracts mode only: append n_windows (passing windows merged) and
+    /// span_frac (target base fraction over the whole tract) as columns 7-8.
+    #[arg(long)]
+    extended: bool,
+
+    /// Print counts per strand to stderr.
+    #[arg(long)]
+    stats: bool,
+}
+
+#[derive(Default)]
+struct Stats {
+    contigs: u64,
+    short_contigs: u64,
+    windows: [u64; 2],
+    tracts: [u64; 2],
+    tract_bp: [u64; 2],
+}
+
+fn fail(msg: &str) -> ! {
+    eprintln!("Error: {msg}");
+    std::process::exit(1);
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let started = Instant::now();
     let args = Args::parse();
 
     let w = args.window_size;
@@ -48,18 +99,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Validate user_base is exactly one char from {A,C,G,T,N}
     if user_base.len() != 1 {
-        eprintln!("Error: --nucleotide must be a single character (A, C, G, T, or N).");
-        std::process::exit(1);
+        fail("--nucleotide must be a single character (A, C, G, T, or N).");
     }
     let base = user_base.as_bytes()[0];
     if !matches!(base, b'A' | b'C' | b'G' | b'T' | b'N') {
-        eprintln!("Error: --nucleotide must be one of A, C, G, T, or N.");
-        std::process::exit(1);
+        fail("--nucleotide must be one of A, C, G, T, or N.");
     }
-
     if w == 0 {
-        eprintln!("Error: --window-size must be at least 1.");
-        std::process::exit(1);
+        fail("--window-size must be at least 1.");
+    }
+    if args.index && !args.output.as_deref().is_some_and(is_bgzf_path) {
+        fail("--index requires --output ending in .gz or .bgz.");
+    }
+    if args.extended && args.mode != Mode::Tracts {
+        fail("--extended requires --mode tracts.");
     }
 
     let threshold = threshold_count(p, w);
@@ -69,28 +122,100 @@ fn main() -> Result<(), Box<dyn Error>> {
     let check_comp = comp_idx != user_idx;
     let name = base as char;
 
-    let reader = fasta::Reader::new(BufReader::new(open_input(&args.fasta)?));
+    let mut reader = fasta::Reader::new(BufReader::new(open_input(&args.fasta)?));
+    let mut sink = match &args.output {
+        Some(path) => Sink::create(path, args.index)?,
+        None => Sink::stdout(),
+    };
+    let mut stats = Stats::default();
+    let mut tracts: Vec<Tract> = Vec::new();
 
-    let stdout = std::io::stdout();
-    let mut out = BufWriter::new(stdout.lock());
-
-    for result_record in reader.records() {
-        let record = result_record?;
+    // One record reused for every contig, so its buffer is allocated once at the
+    // size of the largest contig. `records()` allocates a fresh one per contig,
+    // and on macOS the freed buffers stayed resident (3.2 GB peak on GRCh38).
+    let mut record = fasta::Record::new();
+    loop {
+        reader.read(&mut record)?;
+        if record.is_empty() {
+            break;
+        }
         let chrom = record.id();
+        let seq = record.seq();
+        stats.contigs += 1;
+        if seq.len() < w {
+            stats.short_contigs += 1;
+            continue;
+        }
 
-        for hit in scan_contig(record.seq(), w, user_idx, comp_idx) {
-            let end = hit.start + w;
-            // The name column is always the user's base; strand says which base ran.
-            if hit.user_count >= threshold {
-                write_window(&mut out, chrom, hit.start, end, name, score(hit.user_count, w), '+')?;
+        match args.mode {
+            Mode::Windows => {
+                for hit in scan_contig(seq, w, user_idx, comp_idx) {
+                    let end = hit.start + w;
+                    // The name column is always the user's base; strand says which base ran.
+                    if hit.user_count >= threshold {
+                        stats.windows[0] += 1;
+                        sink.write_record(chrom, hit.start, end, name, score(hit.user_count, w), '+', None)?;
+                    }
+                    if check_comp && hit.comp_count >= threshold {
+                        stats.windows[1] += 1;
+                        sink.write_record(chrom, hit.start, end, name, score(hit.comp_count, w), '-', None)?;
+                    }
+                }
             }
-            if check_comp && hit.comp_count >= threshold {
-                write_window(&mut out, chrom, hit.start, end, name, score(hit.comp_count, w), '-')?;
+            Mode::Tracts => {
+                let mut plus = Merger::new(w, '+');
+                let mut minus = Merger::new(w, '-');
+                tracts.clear();
+                for hit in scan_contig(seq, w, user_idx, comp_idx) {
+                    let plus_pass = hit.user_count >= threshold;
+                    let minus_pass = check_comp && hit.comp_count >= threshold;
+                    stats.windows[0] += plus_pass as u64;
+                    stats.windows[1] += minus_pass as u64;
+                    plus.push(hit.start, hit.user_count, plus_pass, &mut tracts);
+                    if check_comp {
+                        minus.push(hit.start, hit.comp_count, minus_pass, &mut tracts);
+                    }
+                }
+                plus.finish(&mut tracts);
+                minus.finish(&mut tracts);
+                // The two strands close tracts at different times; sort so the
+                // output is ordered by start, as tabix requires.
+                sort_tracts(&mut tracts);
+
+                for t in &tracts {
+                    let s = (t.strand == '-') as usize;
+                    stats.tracts[s] += 1;
+                    stats.tract_bp[s] += (t.end - t.start) as u64;
+                    let extended = args.extended.then(|| {
+                        let idx = if t.strand == '+' { user_idx } else { comp_idx };
+                        let n = seq[t.start..t.end].iter().filter(|&&b| nuc_to_index(b) == Some(idx)).count();
+                        Extended { n_windows: t.n_windows, span_frac: n as f64 / (t.end - t.start) as f64 }
+                    });
+                    sink.write_record(chrom, t.start, t.end, name, score(t.max_count, w), t.strand, extended.as_ref())?;
+                }
             }
         }
     }
 
-    out.flush()?;
+    sink.finish()?;
+
+    if args.stats {
+        eprintln!("polyscan {} stats", env!("CARGO_PKG_VERSION"));
+        eprintln!("contigs\t{}", stats.contigs);
+        eprintln!("contigs_shorter_than_window\t{}", stats.short_contigs);
+        eprintln!("threshold_count\t{threshold} of {w}");
+        for (i, strand) in ["+", "-"].iter().enumerate() {
+            if i == 1 && !check_comp {
+                continue;
+            }
+            eprintln!("windows_passing\t{strand}\t{}", stats.windows[i]);
+            if args.mode == Mode::Tracts {
+                eprintln!("tracts\t{strand}\t{}", stats.tracts[i]);
+                eprintln!("tract_bp\t{strand}\t{}", stats.tract_bp[i]);
+            }
+        }
+        eprintln!("elapsed_seconds\t{:.2}", started.elapsed().as_secs_f64());
+    }
     Ok(())
 }
 
