@@ -1,0 +1,10 @@
+# Cross-compilation linker configuration for static musl binaries.
+# Requires: brew install FiloSottile/musl-cross/musl-cross
+# Then:     rustup target add x86_64-unknown-linux-musl
+#           rustup target add aarch64-unknown-linux-musl
+
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-linux-musl-gcc"
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-musl-gcc"

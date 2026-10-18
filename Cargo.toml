@@ -7,3 +7,9 @@ edition = "2021"
 clap = { version = "4.5.27", features = ["derive"] }
 bio = "2.0.3"
 niffler = "2.7.0"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
