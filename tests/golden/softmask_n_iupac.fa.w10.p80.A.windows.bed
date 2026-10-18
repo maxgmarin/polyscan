@@ -1,0 +1,17 @@
+softmask	18	28	A	80	+
+softmask	19	29	A	90	+
+softmask	20	30	A	100	+
+softmask	21	31	A	90	+
+softmask	22	32	A	80	+
+softmask	48	58	A	80	-
+softmask	49	59	A	90	-
+softmask	50	60	A	100	-
+softmask	51	61	A	90	-
+softmask	52	62	A	80	-
+iupac	19	29	A	80	+
+iupac	20	30	A	80	+
+iupac	21	31	A	80	+
+iupac	22	32	A	80	+
+iupac	50	60	A	80	+
+iupac	51	61	A	80	+
+iupac	52	62	A	80	+

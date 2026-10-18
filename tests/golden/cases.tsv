@@ -1,0 +1,17 @@
+# fixture	window	percentage	nucleotide
+# Golden file: tests/golden/<fixture minus .gz>.w<W>.p<P>.<N>.windows.bed
+# Read by tests/cli.rs and tests/golden/regen.sh.
+# empty.fa is not listed: v0.1.0 exits with niffler FileTooShort (fixed in Phase 1).
+short_contig.fa	10	80	A
+edges.fa	10	80	A
+bookended.fa	10	80	A
+gap1.fa	10	80	A
+overlap_gap.fa	10	80	A
+both_strands.fa	10	80	A
+both_strands.fa	10	50	A
+softmask_n_iupac.fa	10	80	A
+softmask_n_iupac.fa	10	80	N
+multi_contig.fa	10	80	A
+multi_contig.fa.gz	10	80	A
+rounding.fa	25	56	A
+rounding.fa	20	55	A
