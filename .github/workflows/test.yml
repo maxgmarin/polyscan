@@ -1,0 +1,18 @@
+name: test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # --locked fails if Cargo.lock is out of date with Cargo.toml
+      - run: cargo test --locked
