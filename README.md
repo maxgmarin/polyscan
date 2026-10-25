@@ -32,12 +32,12 @@ Prebuilt binaries for Linux and macOS are attached to each [GitHub release](http
 cd <directory_on_PATH>
 
 # Download the latest release (Linux x86_64; static, no runtime dependencies)
-wget https://github.com/maxgmarin/polyscan/releases/download/v0.2.0/polyscan-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+wget https://github.com/maxgmarin/polyscan/releases/download/v0.3.0/polyscan-v0.3.0-x86_64-unknown-linux-musl.tar.gz
 # or macOS (Apple Silicon):
-# wget https://github.com/maxgmarin/polyscan/releases/download/v0.2.0/polyscan-v0.2.0-aarch64-apple-darwin.tar.gz
+# wget https://github.com/maxgmarin/polyscan/releases/download/v0.3.0/polyscan-v0.3.0-aarch64-apple-darwin.tar.gz
 
 # Uncompress the .tar.gz to get the binary
-tar -xzf polyscan-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+tar -xzf polyscan-v0.3.0-x86_64-unknown-linux-musl.tar.gz
 
 # Test that the binary runs
 ./polyscan --help
