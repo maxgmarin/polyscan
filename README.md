@@ -46,8 +46,6 @@ tar -xzf polyscan-v0.2.0-x86_64-unknown-linux-musl.tar.gz
 # Then add the directory with the binary to your $PATH variable
 ```
 
-`checksums-sha256.txt` on the release page verifies the download (`shasum -a 256 -c checksums-sha256.txt`).
-
 ### Building from source
 
 Requires a [Rust toolchain](https://rustup.rs) and a C compiler (bzip2, xz, zstd and libdeflate are compiled from source).
