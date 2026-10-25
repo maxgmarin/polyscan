@@ -21,46 +21,45 @@ Paper's that dicussion this issue are linked below:
 
 
 
-## Installation
+## Install
 
-### Prebuilt binaries
+### Installing prebuilt binaries
 
-Prebuilt binaries for macOS (Apple Silicon) and Linux x86_64 (static, no runtime dependencies) are attached to each [GitHub release](https://github.com/maxgmarin/polyscan/releases). Each tarball holds the `polyscan` binary and this README.
+Prebuilt binaries for Linux and macOS are attached to each [GitHub release](https://github.com/maxgmarin/polyscan/releases). Each tarball holds the `polyscan` binary and this README.
 
-### From source
+```bash
+# Go to the directory where you want to place the polyscan binary
+cd <directory_on_PATH>
 
-Building from source needs the [Rust toolchain](https://www.rust-lang.org/tools/install) and a C compiler. On macOS, the Xcode command line tools provide one (`xcode-select --install`).
+# Download the latest release (Linux x86_64; static, no runtime dependencies)
+wget https://github.com/maxgmarin/polyscan/releases/download/v0.2.0/polyscan-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+# or macOS (Apple Silicon):
+# wget https://github.com/maxgmarin/polyscan/releases/download/v0.2.0/polyscan-v0.2.0-aarch64-apple-darwin.tar.gz
 
-Clone the repository and install from inside it:
+# Uncompress the .tar.gz to get the binary
+tar -xzf polyscan-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+
+# Test that the binary runs
+./polyscan --help
+./polyscan --version
+
+# Then add the directory with the binary to your $PATH variable
+```
+
+`checksums-sha256.txt` on the release page verifies the download (`shasum -a 256 -c checksums-sha256.txt`).
+
+### Building from source
+
+Requires a [Rust toolchain](https://rustup.rs) and a C compiler (bzip2, xz, zstd and libdeflate are compiled from source).
 
 ```bash
 git clone https://github.com/maxgmarin/polyscan.git
 cd polyscan
-cargo install --locked --path .
+cargo build --release              # binary at target/release/polyscan
+cargo install --locked --path .    # or install to ~/.cargo/bin (usually on PATH)
 ```
 
-This builds an optimised binary and copies it to `~/.cargo/bin/polyscan`. That folder is on your `PATH` if you installed Rust with rustup, so you can then run `polyscan` from anywhere. Check it with `polyscan --version`.
-
-- `--path .` installs the crate in the current folder. `cargo install .` on its own is an error; cargo asks for `--path .` instead.
-- `--locked` builds with the exact dependency versions in `Cargo.lock`, the same ones the tests and releases use. Without it, cargo may pick newer versions.
-
-To install a tagged release without cloning:
-
-```bash
-cargo install --locked --git https://github.com/maxgmarin/polyscan --tag v0.2.0
-```
-
-To update later, run `git pull` in the clone and repeat `cargo install --locked --path .`. Cargo replaces the old binary. To remove it, run `cargo uninstall polyscan`.
-
-### Static Linux build
-
-A static Linux binary, for an HPC cluster for example, can be cross-compiled from macOS with the musl toolchain (`brew install FiloSottile/musl-cross/musl-cross` and `rustup target add x86_64-unknown-linux-musl`). The linker is set in `.cargo/config.toml`. The `CC`/`AR` variables are needed because some dependencies compile C code (bzip2, xz, zstd and libdeflate):
-
-```bash
-CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc \
-AR_x86_64_unknown_linux_musl=x86_64-linux-musl-ar \
-cargo build --release --target x86_64-unknown-linux-musl
-```
+A static Linux (musl) build, e.g. for an HPC cluster, is described in the [reference](docs/REFERENCE.md#build).
 
 ## Usage
 
