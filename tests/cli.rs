@@ -147,11 +147,13 @@ fn bgzf_output_and_tabix_index() {
         }
     }
 
-    // A plain-text path writes plain text, identical to stdout.
-    let c = &cases()[0];
+    // A plain-text path writes plain text, identical to stdout. With no
+    // --mode, the output is tracts.
+    let c = cases().into_iter().find(|c| c.fixture == "bookended.fa").unwrap();
+    assert_ne!(fs::read(c.golden("tracts")).unwrap(), fs::read(c.golden("windows")).unwrap());
     let plain = dir.join("out.bed");
     ok_stdout(c.run(&["-o", plain.to_str().unwrap()]));
-    assert_eq!(fs::read(&plain).unwrap(), fs::read(c.golden("windows")).unwrap());
+    assert_eq!(fs::read(&plain).unwrap(), fs::read(c.golden("tracts")).unwrap());
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -283,14 +285,14 @@ fn invalid_flag_combinations_fail() {
     for args in [
         vec!["-f", fa, "--index"],
         vec!["-f", fa, "--index", "-o", plain],
-        vec!["-f", fa, "--extended"],
+        vec!["-f", fa, "--mode", "windows", "--extended"],
         vec!["-f", fa, "-p", "80.5"],
         vec!["-f", fa, "-p", "49"],
         vec!["-f", fa, "-p", "8e1"],
         vec!["-f", fa, "-w", "0"],
         vec!["-f", fa, "-n", "R"],
         vec!["-f", fa, "-n", "AT"],
-        vec!["-f", fa, "--bigbed", bb],
+        vec!["-f", fa, "--mode", "windows", "--bigbed", bb],
         vec!["-f", fa, "--mode", "tracts", "--bigbed", bb, "--threads", "0"],
         vec!["-f", fa, "--mode", "tracts", "--bigbed", bb, "-o", bb],
     ] {

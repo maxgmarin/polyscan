@@ -24,7 +24,7 @@ command -v bedtools > /dev/null || { echo "bedtools not found" >&2; exit 1; }
 
 grep -v '^#' tests/golden/cases.tsv | while IFS=$'\t' read -r fixture w p n modes; do
   stem="tests/golden/${fixture%.gz}.w${w}.p${p}.${n}"
-  windows=$("$POLYSCAN" -f "tests/data/$fixture" -w "$w" -p "$p" -n "$n")
+  windows=$("$POLYSCAN" -f "tests/data/$fixture" -w "$w" -p "$p" -n "$n" --mode windows)
   if [[ ",$modes," == *",windows,"* ]]; then
     printf '%s' "$windows${windows:+$'\n'}" > "$stem.windows.bed"
     echo "$stem.windows.bed ($(wc -l < "$stem.windows.bed" | tr -d ' ') lines)"

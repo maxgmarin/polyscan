@@ -1,6 +1,6 @@
 # polyscan: a tool for identifying homopolymer tracts (or near homopolymer tracts) within DNA sequences
 
-`polyscan` is a simple Rust tool that scans a FASTA file for windows dominated by a single nucleotide. 
+`polyscan` is a simple Rust tool that scans a FASTA file for windows dominated by a single nucleotide, and by default merges them into tracts.
 The user can define the window size that is scanned across the genome, the nucleotide that is searched for, and the minimum percentage required to report a window.
 
 
@@ -72,10 +72,16 @@ polyscan \
   --nucleotide A
 ```
 
-To merge passing windows into tracts and write a compressed, indexed BED:
+To write one line per passing window instead of merged tracts:
 
 ```bash
-polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A --mode tracts \
+polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A --mode windows
+```
+
+To write the tracts as a compressed, indexed BED and a bigBed:
+
+```bash
+polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A \
   -o GRCh38.polyA_tracts_W10_P80.bed.gz --index --stats \
   --bigbed GRCh38.polyA_tracts_W10_P80.bb
 ```
@@ -84,11 +90,11 @@ polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A --mode tracts \
 - **--window-size** / **-w**: Length of the sliding window (default 10).
 - **--percentage** / **-p**: Minimum percentage, a whole number from 50 to 100 (default 80). A window passes when the base count is at least `ceil(p × w / 100)`. At exactly 50 with an even window size, a window can pass on both strands.
 - **--nucleotide** / **-n**: Single base to detect (A, C, G, T, N). Its complement is automatically checked for the minus strand. N is its own complement, so N windows are reported on `+` only.
-- **--mode** / **-m**: `windows` (default) writes one line per passing window. `tracts` merges overlapping and book-ended passing windows on the same strand into one line per tract, as `bedtools merge -s` would.
+- **--mode** / **-m**: `tracts` (default) merges overlapping and book-ended passing windows on the same strand into one line per tract, as `bedtools merge -s` would. `windows` writes one line per passing window.
 - **--output** / **-o**: Output file (default stdout). A path ending in `.gz` or `.bgz` is written as BGZF, so `tabix`, `bedtools`, IGV and pysam can read it directly.
 - **--index**: Also write a tabix index (`<output>.tbi`). Needs a `.gz`/`.bgz` output. Tabix cannot address positions past 2^29 bp (536,870,912), so a longer contig stops the run with an error. For such genomes, run without `--index` and index the output with `tabix -C -p bed`, which writes a CSI index.
-- **--extended**: Tracts mode only. Appends two columns, described below.
-- **--bigbed** *PATH*: Tracts mode only. Also writes the tracts as [bigBed](https://genome.ucsc.edu/goldenPath/help/bigBed.html), UCSC's indexed binary BED, readable by the UCSC browser, IGV, pyBigWig and bigtools. Columns match the BED output, including `--extended`. If no tracts are found, no bigBed is written and a warning is printed. The tracts are held in memory until the scan ends (about 150 MB for GRCh38 at W10/P80).
+- **--extended**: Not available with `--mode windows`. Appends two columns, described below.
+- **--bigbed** *PATH*: Not available with `--mode windows`. Also writes the tracts as [bigBed](https://genome.ucsc.edu/goldenPath/help/bigBed.html), UCSC's indexed binary BED, readable by the UCSC browser, IGV, pyBigWig and bigtools. Columns match the BED output, including `--extended`. If no tracts are found, no bigBed is written and a warning is printed. The tracts are held in memory until the scan ends (about 150 MB for GRCh38 at W10/P80).
 - **--threads**: Threads for decompressing BGZF input, compressing BGZF output written without `--index`, and compressing the bigBed (default 4). Indexed BGZF output is written on one thread.
 - **--stats**: Print counts to stderr: contigs, contigs shorter than the window, passing windows, tracts and total tract length per strand, and run time.
 

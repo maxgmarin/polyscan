@@ -21,10 +21,10 @@ use tracts::{sort_tracts, Merger, Tract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Mode {
-    /// One line per passing window
-    Windows,
     /// Passing windows merged into strand-specific tracts (as `bedtools merge -s`)
     Tracts,
+    /// One line per passing window
+    Windows,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -54,7 +54,7 @@ impl Base {
 #[command(name = "polyscan",
           version = env!("CARGO_PKG_VERSION"),
           author = "Maximillian Marin <maximilliangmarin@gmail.com>",
-          about = "Find windows in DNA sequences that have >= threshold% of a nucleotide. Outputs BED.")]
+          about = "Find tracts in DNA sequences where windows have >= threshold% of a nucleotide. Outputs BED.")]
 struct Args {
     /// Input FASTA, plain or compressed (gzip, bgzip, bzip2, xz, zstd). Use - for stdin.
     #[arg(short, long)]
@@ -76,10 +76,10 @@ struct Args {
     #[arg(short = 'n', long = "nucleotide", value_enum, ignore_case = true, default_value = "A")]
     nucleotide: Base,
 
-    /// Output per-window lines, or merge overlapping and book-ended passing
-    /// windows on the same strand into tracts. Tract score is the highest window
-    /// percentage in the tract.
-    #[arg(short = 'm', long = "mode", value_enum, default_value_t = Mode::Windows)]
+    /// Merge overlapping and book-ended passing windows on the same strand into
+    /// tracts (default), or write one line per passing window. Tract score is
+    /// the highest window percentage in the tract.
+    #[arg(short = 'm', long = "mode", value_enum, default_value_t = Mode::Tracts)]
     mode: Mode,
 
     /// Output file (default: stdout). A path ending in .gz or .bgz is written
@@ -92,13 +92,14 @@ struct Args {
     #[arg(long)]
     index: bool,
 
-    /// Tracts mode only: append n_windows (passing windows merged) and
-    /// span_frac (target base fraction over the whole tract) as columns 7-8.
+    /// Not available with --mode windows. Appends n_windows (passing windows
+    /// merged) and span_frac (target base fraction over the whole tract) as
+    /// columns 7-8.
     #[arg(long)]
     extended: bool,
 
-    /// Tracts mode only: also write the tracts as bigBed to this path. Its
-    /// columns match the BED output, including --extended.
+    /// Not available with --mode windows. Also writes the tracts as bigBed to
+    /// this path. Its columns match the BED output, including --extended.
     #[arg(long, value_name = "PATH")]
     bigbed: Option<PathBuf>,
 
@@ -152,10 +153,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         fail("--index requires --output ending in .gz or .bgz.");
     }
     if args.extended && args.mode != Mode::Tracts {
-        fail("--extended requires --mode tracts.");
+        fail("--extended cannot be used with --mode windows.");
     }
     if args.bigbed.is_some() && args.mode != Mode::Tracts {
-        fail("--bigbed requires --mode tracts.");
+        fail("--bigbed cannot be used with --mode windows.");
     }
     if args.bigbed.is_some() && args.bigbed == args.output {
         fail("--bigbed and --output must be different paths.");
