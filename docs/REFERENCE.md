@@ -14,7 +14,7 @@ cargo install --locked --path .    # or install to ~/.cargo/bin (usually on PATH
 To install a tagged release without cloning:
 
 ```bash
-cargo install --locked --git https://github.com/maxgmarin/polyscan --tag v0.3.0
+cargo install --locked --git https://github.com/maxgmarin/polyscan --tag v0.4.0
 ```
 
 To update an install from a clone, run `git pull` and repeat `cargo install --locked --path .`. To remove it, run `cargo uninstall polyscan`.
