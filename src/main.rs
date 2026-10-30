@@ -16,7 +16,7 @@ use clap::{Parser, ValueEnum};
 
 use bigbed::Retained;
 use output::{is_bgzf_path, Extended, Sink, Staged, TABIX_MAX_POSITION};
-use scan::{complement, nuc_to_index, scan_contig, score, threshold_count};
+use scan::{complement, nuc_to_index, scan_contig, score, threshold_count, MAX_WINDOW};
 use tracts::{sort_tracts, Merger, Tract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -60,7 +60,7 @@ struct Args {
     #[arg(short, long)]
     fasta: String,
 
-    /// Length of the sliding window
+    /// Length of the sliding window (1-255)
     #[arg(short = 'w', long = "window-size", default_value_t = 10)]
     window_size: usize,
 
@@ -146,8 +146,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     let p = args.percentage;
     let base = args.nucleotide.byte();
 
-    if w == 0 {
-        fail("--window-size must be at least 1.");
+    if w == 0 || w > MAX_WINDOW {
+        fail(&format!("--window-size must be between 1 and {MAX_WINDOW}."));
     }
     if args.index && !args.output.as_deref().is_some_and(is_bgzf_path) {
         fail("--index requires --output ending in .gz or .bgz.");
@@ -233,8 +233,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
 
         match args.mode {
+            // The closures are forced inline: called once per passing window,
+            // a separate call cost more than the scan itself.
             Mode::Windows => {
-                scan_contig(seq, w, user_idx, comp_idx, |hit| {
+                scan_contig(seq, w, user_idx, comp_idx, threshold, #[inline(always)] |hit| {
                     let end = hit.start + w;
                     // The name column is always the user's base; strand says which base ran.
                     if hit.user_count >= threshold {
@@ -252,14 +254,16 @@ fn run() -> Result<(), Box<dyn Error>> {
                 let mut plus = Merger::new(w, '+');
                 let mut minus = Merger::new(w, '-');
                 tracts.clear();
-                scan_contig(seq, w, user_idx, comp_idx, |hit| {
-                    let plus_pass = hit.user_count >= threshold;
-                    let minus_pass = check_comp && hit.comp_count >= threshold;
-                    stats.windows[0] += plus_pass as u64;
-                    stats.windows[1] += minus_pass as u64;
-                    plus.push(hit.start, hit.user_count, plus_pass, &mut tracts);
-                    if check_comp {
-                        minus.push(hit.start, hit.comp_count, minus_pass, &mut tracts);
+                // Only passing windows are fed to the mergers: a tract left open
+                // is closed by the next passing window past its end, or by `finish`.
+                scan_contig(seq, w, user_idx, comp_idx, threshold, #[inline(always)] |hit| {
+                    if hit.user_count >= threshold {
+                        stats.windows[0] += 1;
+                        plus.push(hit.start, hit.user_count, true, &mut tracts);
+                    }
+                    if check_comp && hit.comp_count >= threshold {
+                        stats.windows[1] += 1;
+                        minus.push(hit.start, hit.comp_count, true, &mut tracts);
                     }
                     Ok::<(), Box<dyn Error>>(())
                 })?;

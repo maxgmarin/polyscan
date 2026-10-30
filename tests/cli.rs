@@ -290,6 +290,7 @@ fn invalid_flag_combinations_fail() {
         vec!["-f", fa, "-p", "49"],
         vec!["-f", fa, "-p", "8e1"],
         vec!["-f", fa, "-w", "0"],
+        vec!["-f", fa, "-w", "256"],
         vec!["-f", fa, "-n", "R"],
         vec!["-f", fa, "-n", "AT"],
         vec!["-f", fa, "--mode", "windows", "--bigbed", bb],

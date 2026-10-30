@@ -84,7 +84,7 @@ polyscan -f GRCh38.fa.gz -w 10 -p 80 -n A \
 ```
 
 - **--fasta** / **-f**: Path to the input FASTA, plain or compressed (gzip, bgzip, bzip2, xz or zstd, detected automatically). Use `-` to read from stdin. bgzip (BGZF) input is decompressed on several threads, so it is the fastest compressed form.
-- **--window-size** / **-w**: Length of the sliding window (default 10).
+- **--window-size** / **-w**: Length of the sliding window, from 1 to 255 (default 10).
 - **--percentage** / **-p**: Minimum percentage, a whole number from 50 to 100 (default 80). A window passes when the base count is at least `ceil(p × w / 100)`. At exactly 50 with an even window size, a window can pass on both strands.
 - **--nucleotide** / **-n**: Single base to detect (A, C, G, T, N). Its complement is automatically checked for the minus strand. N is its own complement, so N windows are reported on `+` only.
 - **--mode** / **-m**: `tracts` (default) merges overlapping and book-ended passing windows on the same strand into one line per tract, as `bedtools merge -s` would. `windows` writes one line per passing window.
